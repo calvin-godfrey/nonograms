@@ -143,6 +143,7 @@ public class Nonogram{
    }
    
    public void display(){
+      System.out.println();
       int[] max = getClueSize();
       int rowMax = max[0];
       int colMax = max[1];
@@ -190,19 +191,23 @@ public class Nonogram{
       board[row][col] = value;
    }
    
-   public void basicParse(int row, boolean isRow){ //True for row, false for column
+   public void basicParse(int row, int start, int end, boolean isRow){ //True for row, false for column
+                                                                       //Use start/end if they are already done
       int magic; //The number of uncertain cells in each clue block
       int sum = 0;
       ArrayList<Integer> clues = isRow ? rowClues.get(row) : colClues.get(row);
+      ArrayList<Boolean> completed = isRow ? isRowClueDone.get(row) : isColClueDone.get(row);
       for(int i=0;i<clues.size();i++){
+         if(completed.get(i) == true)continue;
          sum += clues.get(i);
          sum++;
       }
       sum--; //We only account for spaces, so we subtract one
-      magic = width-sum;
+      magic = (end-start)-sum;
       //Loop through the clues and only mark cells if we are certain about them
-      int counter = 0; //Where in the row we are
-      for(int i=0;i<clues.size();i++){
+      int counter = start; //Where in the row we are
+      for(int i=0;i<clues.size()&&counter<=end;i++){
+         if(completed.get(i) == true)continue;
          if(clues.get(i) <= magic){
             counter += clues.get(i); //ALL of the cells are uncertain
             counter++;
@@ -231,10 +236,36 @@ public class Nonogram{
    
    public void basicParse(){
       for(int r=0;r<height;r++){
-         basicParse(r, true);
+         ArrayList<Boolean> cluesDone = isRowClueDone.get(r);
+         int start = 0;
+         int end = width;
+         for(int i=0;i<cluesDone.size();i++){
+            if(cluesDone.get(i)){
+               start += rowClues.get(r).get(i);
+               start++;
+            }
+            if(cluesDone.get(cluesDone.size()-i-1)){
+               end -= rowClues.get(r).get(rowClues.get(r).size()-i-1);
+               end--;
+            }
+         }
+         basicParse(r, start, end, true);
       }
       for(int c=0;c<width;c++){
-         basicParse(c, false);
+         ArrayList<Boolean> cluesDone = isColClueDone.get(c);
+         int start = 0;
+         int end = height;
+         for(int i=0;i<cluesDone.size();i++){
+            if(cluesDone.get(i)){
+               start += colClues.get(c).get(i);
+               start++;
+            }
+            if(cluesDone.get(cluesDone.size()-i-1)){
+               end -= rowClues.get(c).get(rowClues.get(c).size()-i-1);
+               end--;
+            }
+         }
+         basicParse(c, start, end, false);
       }
    }
    
@@ -258,7 +289,16 @@ public class Nonogram{
             inBlock = false;
          }
       }
+      if(inBlock && curr == n)return new int[]{currStart, set.length-1};
       return new int[]{-1, -1}; //Not found
+   }
+   
+   private int findMaxN(int[] row){ //Basically the number of blocks in a row
+      int n=1;
+      while(findNthBlock(row, n)[0] != -1){
+         n++;
+      }
+      return n-1;
    }
    
    public boolean isDone(int index, boolean isRow){
@@ -316,7 +356,7 @@ public class Nonogram{
       return ans;
    }
    
-   private int firstX(int[] nums, int start){ //returns the index of first value of -1 after the given index in the given array
+   private int findFirstX(int[] nums, int start){ //returns the index of first value of -1 after the given index in the given array
       for(int i=start;i<nums.length;i++){
          if(nums[i] == -1)return i;
       }
@@ -335,7 +375,11 @@ public class Nonogram{
          int[] res2 = findNthBlock(row, n+1);
          int width2 = res2[1] - res2[1] + 1;
          if(res2[0] - res1[1] == 2 && width1+width2 >= biggestClue){ //Gap of exactly one between blocks but would be too big
-            setValue(index, res2[0]-1, -1); //Mark it out
+            if(isRow){
+               setValue(index, res2[0]-1, -1); //Mark it out
+            } else {
+               setValue(res2[0]-1, index, -1);
+            }
          }
          n++;
       }
@@ -351,6 +395,96 @@ public class Nonogram{
       }
    }
    
+   private void checkBorderStart(int index, boolean isRow){
+      if(isDone(index, isRow))return;
+      ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      int[] row = isRow ? board[index] : getCol(index);
+      int firstClue = clues.get(0);
+      int[] res = findNthBlock(row, 1);
+      int start = res[0];
+      int end = res[1];
+      if(start == -1 || end == -1)return;
+      int firstX = findFirstX(row, 0);
+      //BEGIN CHECKING THE FIRST BLOCK//
+      if(firstX < firstClue){
+         for(int i=0;i<firstX;i++){
+            if(isRow){
+               setValue(index, i, -1);
+            } else {
+               setValue(i, index, -1);
+            }
+         }
+         return; //Nothing else to do in that row
+      }
+      int blockWidth = end - start + 1;
+      if(blockWidth == firstClue){ //it matches
+         if(isRow){
+            isRowClueDone.get(index).set(0, true); //mark that clue as done
+         } else {
+            isColClueDone.get(index).set(0, true);
+         }
+         if(start<=firstClue){ //and there is no space before it to insert it
+            if(start != 0){
+               if(isRow){
+                  setValue(index, start-1, -1);
+               } else {
+                  setValue(start-1, index, -1);
+               }
+            }
+            if(isRow){
+               setValue(index, end+1, -1);
+            } else {
+               setValue(end+1, index, -1);
+            }
+         }
+      }
+   }
+   
+   private void checkBorderEnd(int index, boolean isRow){
+      if(isDone(index, isRow))return;
+      ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      int[] row = isRow ? board[index] : getCol(index);
+      int lastClue = clues.get(clues.size()-1);
+      int[] lastBlock = findNthBlock(row, findMaxN(row));
+      int start = lastBlock[0];
+      int end = lastBlock[1];
+      if(start == -1 || end == -1)return;
+      int blockWidth = end - start + 1;
+      if(blockWidth == lastClue){
+         if(isRow){
+            isRowClueDone.get(index).set(isRowClueDone.get(index).size()-1, true);
+         } else {
+            isColClueDone.get(index).set(isColClueDone.get(index).size()-1, true);
+         }
+         int max = isRow ? width : height;
+         if(end >= max-blockWidth-1){
+            if(end != max-1){
+               if(isRow){
+                  setValue(index, end+1, -1);
+               } else {
+                  setValue(end+1, index, -1);
+               }
+            }
+            if(isRow){
+               setValue(index, start-1, -1);
+            } else {
+               setValue(start-1, index, -1);
+            }
+         }
+      }      
+   }
+   
+   public void checkAllBorder(){
+      for(int i=0;i<height;i++){
+         checkBorderStart(i, true);
+         checkBorderEnd(i, true);
+      }
+      for(int i=0;i<width;i++){
+         checkBorderStart(i, false);
+         checkBorderEnd(i, false);
+      }
+   }
+   
    public void solve(){
       display();
       basicParse();
@@ -358,6 +492,8 @@ public class Nonogram{
       checkAllDone();
       display();
       preventBigBlocks();
+      display();
+      checkAllBorder();
       display();
    }
       
