@@ -409,10 +409,10 @@ public class Nonogram{
          }
          if(nums[i] != -1&&inX){
             inX = false;
-            if(ans-1 == n)return new int[]{startIndex, i};
+            if(ans-1 == n)return new int[]{startIndex, i-1};
          }
       }
-      if(startIndex != -1)return new int[]{startIndex, nums.length};
+      if(startIndex != -1)return new int[]{startIndex, nums.length-1};
       return new int[]{-1, -1};   
    }
    
@@ -424,6 +424,7 @@ public class Nonogram{
       
    
    public void preventBigBlock(int index, boolean isRow){ //Checks if there are two blocks adjacent that would create one too big
+      if(isDone(index, isRow))return;
       ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
       ArrayList<Boolean> complete = isRow? isRowClueDone.get(index) : isColClueDone.get(index);
       int[] row = isRow ? board[index] : getCol(index);
@@ -464,11 +465,11 @@ public class Nonogram{
       for(int i=0;i<clues.size();i++){
          if(!complete.get(i)){
             firstClue = clues.get(i);
-            which = i;
+            which = i+1;
             break;
          }
       }
-      int[] res = findNthBlock(row, which+1);
+      int[] res = findNthBlock(row, which); //Which will always be at least 1
       int start = res[0];
       int end = res[1];
       if(start == -1 || end == -1)return;
@@ -519,7 +520,7 @@ public class Nonogram{
             }
          }
       }
-      int startSecondBlock = findNthBlock(row, which+2)[0];
+      int startSecondBlock = findNthBlock(row, which+1)[0];
       if(startSecondBlock == -1 || startSecondBlock > firstX){ //Then we can work backwards; only one block
          for(int i=firstX, j=0;i>=0&&j<firstClue;i--){
             if(i<end){
@@ -586,8 +587,6 @@ public class Nonogram{
          checkBorderStart(i, true);
          checkBorderEnd(i, true);
       }
-      System.out.println("AFTER CHECKING BODRER FOR ROWS");
-      display();
       for(int i=0;i<width;i++){
          checkBorderStart(i, false);
          checkBorderEnd(i, false);
@@ -595,6 +594,7 @@ public class Nonogram{
    }
    
    private void removeSmallGaps(int index, boolean isRow){
+      if(isDone(index, isRow))return;
       ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
       ArrayList<Boolean> completed = isRow ? isRowClueDone.get(index) : isColClueDone.get(index);
       int[] row = isRow ? board[index] : getCol(index);
@@ -605,12 +605,14 @@ public class Nonogram{
       }
       int n = 1;
       int[] currX = findNthX(row, 0, n);
+      if(currX[0] == -1 || currX[1] == -1)return;
       while(findNthX(row, 0, n+1)[0] != -1){ //While there is a second block
          int[] nextX = findNthX(row, 0, n+1);
-         int width = currX[1]-nextX[0]-1;
-         if(width < minimum){
+         if(nextX[0] == -1 ||nextX[1] == -1)return;
+         int blockWidth = nextX[0]-currX[1]-1;
+         if(blockWidth < minimum){
             for(int i=currX[1]+1;i<nextX[0];i++){
-               if(row[i] == 1)return; //Then we're outta luck
+               if(row[i] == 1)return; //Can't mark them out if there's a block between X's
             }
             for(int i=currX[1]+1;i<nextX[0];i++){
                if(isRow){
@@ -621,12 +623,43 @@ public class Nonogram{
             }
          }
          n++;
+         currX = findNthX(row, 0, n);
       }
    }
    
    public void removeSmallGaps(){
       for(int r=0;r<height;r++)removeSmallGaps(r, true);
       for(int c=0;c<width;c++)removeSmallGaps(c, false);
+   }
+   
+   private void surroundMax(int index, boolean isRow){
+      ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      ArrayList<Boolean> completed = isRow ? isRowClueDone.get(index) : isColClueDone.get(index);
+      int[] row = isRow ? board[index] : getCol(index);
+      int max = 0;
+      for(int i=0;i<clues.size();i++){
+         if(completed.get(i))continue;
+         if(clues.get(i) > max)max = clues.get(i);
+      } //get the max
+      
+      for(int n=0;n<findMaxN(row);n++){
+         int[] res = findNthBlock(row, n+1);
+         int blockWidth = res[1] - res[0] + 1;
+         if(blockWidth == max){
+            if(isRow){
+               if(res[0] != 0)setValue(index, res[0]-1, -1);
+               if(res[1] != row.length-1)setValue(index, res[1]+1, -1);
+            } else {
+               if(res[0] != 0)setValue(res[0]-1, index, -1);
+               if(res[1] != row.length-1)setValue(res[1]+1, index, -1);
+            }
+         }
+      }
+   }
+   
+   public void surroundMax(){
+      for(int r=0;r<height;r++)surroundMax(r, true);
+      for(int c=0;c<width;c++)surroundMax(c, false);
    }
    
    public void solve(){
@@ -653,6 +686,10 @@ public class Nonogram{
          display();
          checkAllBorder();
          System.out.println("AFTER CHECK ALL BORDER");
+         display();
+         surroundMax();
+         System.out.println("AFTER SURROUND MAX");
+         display();
          boolean end = true;
          for(int r=0;r<height;r++){
             for(int c=0;c<width;c++){
