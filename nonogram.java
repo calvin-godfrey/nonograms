@@ -14,6 +14,8 @@ public class Nonogram{
    private ArrayList<ArrayList<Integer>> colClues;
    private ArrayList<ArrayList<Boolean>> isRowClueDone;
    private ArrayList<ArrayList<Boolean>> isColClueDone;
+   private ArrayList<ArrayList<ArrayList<Integer>>> possibleRowOrders;
+   private ArrayList<ArrayList<ArrayList<Integer>>> possibleColOrders;
    private int height;
    private int width;
    private String[] dispRow; //String[] containing the clues for each row to display
@@ -90,6 +92,7 @@ public class Nonogram{
          isColClueDone.add(tempDone);
          colClues.add(temp);
       }
+      initializePossibleValues();
    }
    
    private int[] getCol(int index){
@@ -188,8 +191,8 @@ public class Nonogram{
    }
    
    public void setValue(int row, int col, int value){
-      if(row<0)System.out.println("COL: " + "\t" + col + "\t" + value);
-      if(col<0)System.out.println("ROW: " + "\t" + row + "\t" + value);
+      if(row<0||row>=width)System.out.println("ROW BAD: " + "\t" + row + "\t" + col + "\t" + value);
+      if(col<0||col>=height)System.out.println("COL BAD: " + "\t" + row + "\t" + col + "\t" + value);
       board[row][col] = value;
    }
    
@@ -251,76 +254,23 @@ public class Nonogram{
    public void basicParse(){
       for(int r=0;r<height;r++){
          ArrayList<Boolean> cluesDone = isRowClueDone.get(r);
-         int start = 0;
-         int end = width;
-         for(int i=0;i<cluesDone.size();i++){ //This part doesn't work when the row/column is already complete but that is OK
-            if(cluesDone.get(i)){
-               start=i==0?start+findNthBlock(board[r], i+1)[0] : start+(findNthBlock(board[r], i+1)[0]-findNthBlock(board[r], i)[1]-1);
-               //Above accounts for the gap before a clue
-               start += rowClues.get(r).get(i); //Space of the clue
-               if(i!=cluesDone.size()-1&&!cluesDone.get(i+1))start++; //Space one after the clue, only if the next one isn't
-            } else {
-               break;
-            }
-         }
+         int start = findRowStart(r, true);
+         int end = findRowEnd(r, true);
          
-         for(int i=cluesDone.size()-1;i>=0;i--){
-            if(cluesDone.get(i)){
-               end = i==cluesDone.size()-1?end-(width-findNthBlock(board[r], findMaxN(board[r]))[1]):end-(findNthBlock(board[r], findMaxN(board[r])-i)[0]-findNthBlock(board[r], findMaxN(board[r])-i-1)[1]-1);
-               end -= rowClues.get(r).get(i);
-               if(i!=0&&!cluesDone.get(i-1))end--;
-            } else {
-               break;
-            }
-         }
          if(end==width){
             basicParse(r, start, end, true);
          } else {
             basicParse(r, start, end+1, true);
          }
       }
-      displayCompleted();
       for(int c=0;c<width;c++){
          ArrayList<Boolean> cluesDone = isColClueDone.get(c);
-         int start = 0;
-         int end = height;
-         for(int i=0;i<cluesDone.size();i++){
-            if(cluesDone.get(i)){
-               start = i==0?start+findNthBlock(getCol(c), i+1)[0]:start+(findNthBlock(getCol(c), i+1)[0]-findNthBlock(getCol(c), i)[1]-1);
-               start += colClues.get(c).get(i);
-               if(i!=cluesDone.size()-1&&!cluesDone.get(i+1))start++;
-            } else {
-               break; //Then we can't narrow down the start any more
-            }
-         }
-         for(int i=cluesDone.size()-1;i>0;i--){
-            if(cluesDone.get(i)){
-               if(i==cluesDone.size()-1){
-                  end -= height-findNthBlock(getCol(c), findMaxN(getCol(c)))[1];
-               } else {
-                  int var1 = findNthBlock(getCol(c), findMaxN(getCol(c))-(cluesDone.size()-1-i))[0];
-                  int[] block2 = findNthBlock(getCol(c), findMaxN(getCol(c))-(cluesDone.size()-1-i)-1);
-                  int var2 = block2[0]-1;
-                  if(var2<0||block2[1]-block2[0]+1!=colClues.get(c).get(i-1)){
-                     break;
-                  }
-                  boolean shouldBreak = false;
-                  for(int k=findNthBlock(getCol(c), findMaxN(getCol(c))-(cluesDone.size()-1-i)-1)[1]+1;k<findNthBlock(getCol(c), findMaxN(getCol(c))-(cluesDone.size()-1-i))[1];k++){
-                     if(getCol(c)[k] != -1)shouldBreak = true;
-                  }
-                  if(shouldBreak)break;
-                  end -= var1-var2;
-               }
-               end -= colClues.get(c).get(i);
-               if(i!=0&&!cluesDone.get(i-1))end--;
-            } else {
-               break;
-            }
-         }
+         int start = findRowStart(c, false);
+         int end = findRowEnd(c, false);
+
          if(end==height){
             basicParse(c, start, end, false);
          } else {
-            System.out.println("FINALLY\t" + end);
             basicParse(c, start, end+1, false);
          }
       }
@@ -369,6 +319,11 @@ public class Nonogram{
             return false;
          }
          n++;
+      }
+      if(isRow){
+         finishRow(index);
+      } else {
+         finishCol(index);
       }
       return true;
    }
@@ -512,7 +467,7 @@ public class Nonogram{
       }
       int blockWidth = end - start + 1;
       if(blockWidth == firstClue){ //it matches
-         if(start<=firstClue){ //and there is no space before it to insert it
+         if(start<=firstClue){ //there is no space before it to insert it
             if(isRow){
                isRowClueDone.get(index).set(0, true); //mark that clue as done
             } else {
@@ -546,6 +501,7 @@ public class Nonogram{
          }
       }
       int startSecondBlock = findNthBlock(row, which+1)[0];
+      int var1 = 1;
       if(firstX == -1)firstX = isRow ? width : height;
       int gap = firstX - rowStart;
       if(firstClue+clues.get(which-1)+1<gap)return;
@@ -563,16 +519,86 @@ public class Nonogram{
       }
    }
    
+   private int findRowStart(int index, boolean isRow){
+      if(isDone(index, isRow))return 0;
+      ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      ArrayList<Boolean> completed = isRow ? isRowClueDone.get(index) : isColClueDone.get(index);
+      int[] row = isRow ? board[index] : getCol(index);
+      int start = 0;
+      for(int i=0;i<clues.size();i++){ //This part doesn't work when the row/column is already complete but that is OK
+         if(completed.get(i)){
+            start=i==0?start+findNthBlock(row, i+1)[0] : start+(findNthBlock(row, i+1)[0]-findNthBlock(row, i)[1]-1);
+            //Above accounts for the gap before a clue
+            start += clues.get(i); //Space of the clue
+            if(i!=clues.size()-1&&!completed.get(i+1))start++; //Space one after the clue, only if the next one isn't
+         } else {
+            break;
+         }
+      }
+      return start;
+   }
+   
+   private int findRowEnd(int index, boolean isRow){
+      if(isDone(index, isRow))return 0;
+      ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      ArrayList<Boolean> completed = isRow ? isRowClueDone.get(index) : isColClueDone.get(index);
+      int[] row = isRow ? board[index] : getCol(index);
+      int max = isRow ? width : height;
+      int end = max;
+   
+      for(int i=clues.size()-1;i>0;i--){
+         if(completed.get(i)){
+            if(i==clues.size()-1){
+               end -= max-findNthBlock(row, findMaxN(row))[1];
+            } else {
+               int var1 = findNthBlock(row, findMaxN(row)+1-(clues.size()-1-i))[0];
+               int[] block2 = findNthBlock(row, findMaxN(row)+1-(clues.size()-1-i)-1);
+               int var2 = block2[1]+1;
+               if(var2<=0||block2[1]-block2[0]+1!=clues.get(i-1)){
+                  break;
+               }
+               end -= var1-var2;
+            }
+            end -= clues.get(i);
+            boolean shouldBreak = false;
+            int startPoint = findNthBlock(row, findMaxN(row)-(clues.size()-1-i)-1)[1]+1;
+            int endPoint = findNthBlock(row, findMaxN(row)-(clues.size()-1-i))[0];
+            for(int k=startPoint;k<endPoint;k++){
+               if(row[k] != -1)shouldBreak = true;
+            }
+            if(shouldBreak)break;
+            if(i!=0&&!completed.get(i-1))end--;
+         } else {
+            break;
+         }
+      }
+      return end;
+   }
+   
    private void checkBorderEnd(int index, boolean isRow){
       if(isDone(index, isRow))return;
       ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
+      ArrayList<Boolean> completed = isRow ? isRowClueDone.get(index) : isColClueDone.get(index);
       int[] row = isRow ? board[index] : getCol(index);
-      int lastClue = clues.get(clues.size()-1);
-      int[] lastBlock = findNthBlock(row, findMaxN(row));
+      int max = isRow ? width : height;
+      int indexMax = findRowEnd(index, isRow);
+      int fromEnd = 0; //How many blocks from end
+      for(int i=completed.size()-1;i>0;i--){
+         if(completed.get(i)){
+            fromEnd++;
+         } else {
+            break;
+         }
+      }
+      for(int i=indexMax;i>-1;i--){
+         if(row[i-1]!=-1)break;
+         indexMax--;
+      }
+      int lastClue = clues.get(clues.size()-1-fromEnd);
+      int[] lastBlock = findNthBlock(row, findMaxN(row)-fromEnd);
       int start = lastBlock[0];
       int end = lastBlock[1];
-      int max = isRow ? width : height;
-            //Find the last X before the last block starts
+      //Find the last X before the last block starts
       int lastX = 0, n = 0;
       for(int i=0;i<height;i++){
          int Xend = findNthX(row, 0, n+1)[1];
@@ -583,7 +609,7 @@ public class Nonogram{
       if(start == -1 || end == -1)return;
       int blockWidth = end - start + 1;
       if(blockWidth == lastClue){
-         if(end >= max-blockWidth-1){ //No space to fit it later on in row
+         if(end >= indexMax-blockWidth-1){ //No space to fit it later on in row
             if(isRow){
                isRowClueDone.get(index).set(isRowClueDone.get(index).size()-1, true);
             } else {
@@ -604,15 +630,15 @@ public class Nonogram{
          }
          return;
       }
-      if(end>max-lastClue){
-         for(int i=0;i<lastClue;i++){
-            if(max-i>start)continue;
+      if(end>indexMax-lastClue){
+         for(int i=0;i<lastClue-1;i++){
+            if(indexMax-i>start)continue;
             if(isRow){
-               if(board[index][max-i-1] == -1)break;
-               setValue(index, max-i-1, 1);
+               if(board[index][indexMax-i-1] == -1)break;
+               setValue(index, indexMax-i-1, 1);
             } else {
-               if(board[max-i-1][index] == -1)break;
-               setValue(max-i-1, index, 1);
+               if(board[indexMax-i-1][index] == -1)break;
+               setValue(indexMax-i-1, index, 1);
             }
          }
       }
@@ -711,6 +737,13 @@ public class Nonogram{
       for(int c=0;c<width;c++)surroundMax(c, false);
    }
    
+   private int countNumClues(ArrayList<Integer> clues, int clue){
+      /* Returns the number of times a given clue occurs */
+      int count = 0;
+      for(int i=0;i<clues.size();i++)if(clues.get(i)==clue);count++;
+      return count;
+   }
+   
    private void markDoneStart(int index, boolean isRow){
       if(isDone(index, isRow))return;
       ArrayList<Integer> clues = isRow ? rowClues.get(index) : colClues.get(index);
@@ -726,6 +759,11 @@ public class Nonogram{
       }
       if(!found){
          completed.set(0, true);
+         if(isRow){
+            setValue(index, block1[1]+1, -1);
+         } else {
+            setValue(block1[1]+1, index, -1);
+         }
       } else {
          return;
       }
@@ -806,6 +844,121 @@ public class Nonogram{
       System.out.println("COLS");
       for(int c=0;c<width;c++)System.out.println(isColClueDone.get(c));
    }
+   
+   private void initializePossibleValues(){
+      possibleRowOrders = new ArrayList<ArrayList<ArrayList<Integer>>>();
+      possibleColOrders = new ArrayList<ArrayList<ArrayList<Integer>>>();
+      for(int i=0;i<rowClues.size();i++){
+         possibleRowOrders.add(findAllCombinations(rowClues.get(i), width));
+      }
+      for(int i=0;i<colClues.size();i++){
+         possibleColOrders.add(findAllCombinations(colClues.get(i), height));
+      }
+   }
+   
+   private ArrayList<ArrayList<Integer>> findAllCombinations(ArrayList<Integer> clues, int size){
+      ArrayList<ArrayList<Integer>> permutations = new ArrayList<ArrayList<Integer>>();
+      ArrayList<ArrayList<Integer>> points = new ArrayList<ArrayList<Integer>>();
+      int sum = 0;
+      for(int i=0;i<clues.size();i++){
+         sum += clues.get(i);
+         ArrayList<Integer> ones = new ArrayList<Integer>();
+         for(int j=0;j<clues.get(i);j++)ones.add(1);
+         points.add(ones);
+      }
+      ArrayList<ArrayList<Integer>> ans = helper(points, size+1-sum);
+      for(int i=0;i<ans.size();i++){
+         ArrayList<Integer> copy = new ArrayList<Integer>();
+         for(int j=1;j<ans.get(i).size();j++)copy.add(ans.get(i).get(j));
+         permutations.add(copy);
+      }
+      return permutations;
+   }
+   
+   private ArrayList<ArrayList<Integer>> helper(ArrayList<ArrayList<Integer>> array, int size){
+      ArrayList<ArrayList<Integer>> perm = new ArrayList<ArrayList<Integer>>();
+      if(array.size()==0){
+         ArrayList<Integer> negOne = new ArrayList<Integer>();
+         for(int i=0;i<size;i++)negOne.add(-1);
+         perm.add(negOne);
+         return perm;
+      }
+      for(int i=1;i<size-array.size()+2;i++){
+         ArrayList<ArrayList<Integer>> arrayWithoutOne = new ArrayList<ArrayList<Integer>>(); //Need to get copy of array without first element, cannot change it tho
+         for(int z=1;z<array.size();z++)arrayWithoutOne.add(array.get(z));
+         ArrayList<ArrayList<Integer>> subset = helper(arrayWithoutOne, size-i);
+         for(int j=0;j<subset.size();j++){
+            ArrayList<Integer> tail = subset.get(j);
+            ArrayList<Integer> negOne = new ArrayList<Integer>();
+            for(int z=0;z<i;z++)negOne.add(-1);
+            negOne.addAll(array.get(0));
+            negOne.addAll(tail); //Concatenate the arraylists
+            perm.add(negOne);
+         }
+      }
+      return perm;
+   }
+   
+   private void eliminatePossibilities(){
+      for(int i=0;i<possibleRowOrders.size();i++){
+         ArrayList<ArrayList<Integer>> rowPossibilities = possibleRowOrders.get(i);
+         for(int k=0;k<rowPossibilities.size();k++){
+            ArrayList<Integer> possibility = rowPossibilities.get(k);
+            int[] row = board[i];
+            boolean remove = false;
+            for(int j=0;j<possibility.size()&&!remove;j++){
+               if(row[j] == 0)continue;
+               if(row[j] != possibility.get(j))remove = true;
+            }
+            if(remove){
+               rowPossibilities.remove(k);
+               k--;
+            }
+         }
+      }
+      for(int i=0;i<possibleColOrders.size();i++){
+         ArrayList<ArrayList<Integer>> rowPossibilities = possibleColOrders.get(i);
+         for(int k=0;k<rowPossibilities.size();k++){
+            ArrayList<Integer> possibility = rowPossibilities.get(k);
+            int[] row = getCol(i);
+            boolean remove = false;
+            for(int j=0;j<possibility.size()&&!remove;j++){
+               if(row[j] == 0)continue;
+               if(row[j] != possibility.get(j))remove = true;
+            }
+            if(remove){
+               rowPossibilities.remove(k);
+               k--;
+            }
+         }
+      }
+   }
+   
+   private void markOverlap(int index, boolean isRow){
+      if(isDone(index, isRow))return;
+      System.out.println(index + "\t" + isRow);
+      ArrayList<ArrayList<Integer>> possible = isRow ? possibleRowOrders.get(index) : possibleColOrders.get(index);
+      ArrayList<Integer> known = possible.get(0);
+      int[] row = isRow ? board[index] : getCol(index);
+      for(int i=1;i<possible.size();i++){
+         ArrayList<Integer> temp = possible.get(i);
+         for(int j=0;j<temp.size();j++){
+            if(temp.get(j) != known.get(j))known.set(j, 0);
+         }
+      }
+      
+      for(int i=0;i<row.length;i++){
+         if(row[i]!=0||known.get(i)==0)continue;
+         row[i] = known.get(i);
+      }
+      
+   }
+   
+   private void markOverlap(){
+      for(int r=0;r<height;r++)markOverlap(r, true);
+      for(int c=0;c<width;c++)markOverlap(c, false);
+   }
+   
       
    public void solve(){
       boolean done = false;
@@ -845,8 +998,16 @@ public class Nonogram{
             }
          }
          if(end)done = true;
+      } //Done using deducation/logic, brute-forcing it from here
+      System.out.println("AFTER DOING LOGIC ONLY");
+      display(); //Display "checkpoint"
+      for(int i=0;i<10;i++){
+         eliminatePossibilities();
+         System.out.println("DONE ELIMINATING");
+         markOverlap();
+         System.out.println("ONE LEVEL OF BRUTE FORCE");
+         display();
       }
-      display();
-      displayCompleted();
+      //displayCompleted();
    }   
 } //END OF CLASS
